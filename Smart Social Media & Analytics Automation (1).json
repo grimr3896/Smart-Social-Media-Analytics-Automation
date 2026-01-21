@@ -1,0 +1,512 @@
+{
+  "name": "Smart Social Media & Analytics Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9,14,18 * * *"
+            }
+          ]
+        }
+      },
+      "id": "ce1cd338-9d6c-4620-8c15-716fd5ff5e53",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      },
+      "id": "f8720517-5666-48b9-9220-355f668a8e65",
+      "name": "Get Content Queue",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [
+        -1008,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.Status}}",
+              "operation": "equals",
+              "value2": "Scheduled"
+            },
+            {
+              "value1": "={{$json.PostDate}}",
+              "operation": "equals",
+              "value2": "={{$today.format('YYYY-MM-DD')}}"
+            }
+          ]
+        }
+      },
+      "id": "4a1f841a-52ab-4285-a2a6-6dfce20d4151",
+      "name": "Filter Ready Posts",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -800,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": "gpt-4",
+        "messages": {
+          "values": [
+            {
+              "content": "=Create 5 engaging social media captions for this content:\n\nTopic: {{$json.Topic}}\nKey Points: {{$json.KeyPoints}}\n\nRequirements:\n1. Instagram: Engaging with emojis, 1-2 sentences\n2. Twitter/X: Punchy, under 280 chars\n3. YouTube: Detailed with timestamps hint\n4. TikTok: Trendy with hashtags\n5. LinkedIn: Professional tone, value-focused\n\nReturn as JSON with keys: instagram, twitter, youtube, tiktok, linkedin"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 500,
+          "temperature": 0.7
+        }
+      },
+      "id": "e7dea097-1b43-4d9e-b8bd-f403fd89c30d",
+      "name": "Generate AI Captions",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [
+        -608,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json.choices[0].message.content;\nconst captions = JSON.parse(response);\n\nreturn {\n  json: {\n    ...items[0].json,\n    captions: captions,\n    mediaUrl: items[0].json.MediaURL,\n    topic: items[0].json.Topic\n  }\n};"
+      },
+      "id": "0a9db962-a59a-4338-817e-f7d3edaa5d4d",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const topic = $json.topic;\nconst keywords = topic.split(' ');\n\n// Generate hashtags\nconst hashtags = keywords.map(word => `#${word.replace(/[^a-zA-Z0-9]/g, '')}`).filter(tag => tag.length > 2);\n\n// Add trending format hashtags\nhashtags.push('#viral', '#trending', '#fyp', '#explore');\n\nreturn {\n  json: {\n    ...items[0].json,\n    hashtags: hashtags.slice(0, 15).join(' ')\n  }\n};"
+      },
+      "id": "10c73563-5142-4f83-80fe-9c08e64f07d5",
+      "name": "Generate Hashtags",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        256
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "7f6a578d-69b7-4308-95e4-e69844e37397",
+      "name": "Split By Platform",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -208,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v18.0/{{$env.INSTAGRAM_ACCOUNT_ID}}/media",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "instagramBusinessAccountApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"image_url\": \"{{$json.mediaUrl}}\",\n  \"caption\": \"{{$json.captions.instagram}}\\n\\n{{$json.hashtags}}\",\n  \"access_token\": \"{{$credentials.accessToken}}\"\n}",
+        "options": {}
+      },
+      "id": "62d1c26c-013d-46e1-8481-d043b0fe24c9",
+      "name": "Post to Instagram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        0,
+        0
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v18.0/{{$env.INSTAGRAM_ACCOUNT_ID}}/media_publish",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"creation_id\": \"{{$json.id}}\",\n  \"access_token\": \"{{$credentials.accessToken}}\"\n}",
+        "options": {}
+      },
+      "id": "8fbfbd10-46d5-476e-8df3-963023a0755a",
+      "name": "Publish Instagram Post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        208,
+        0
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twitter.com/2/tweets",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twitterOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": \"{{$json.captions.twitter}}\\n\\n{{$json.hashtags.split(' ').slice(0, 5).join(' ')}}\"\n}",
+        "options": {}
+      },
+      "id": "6d200d24-215c-4c92-af84-95de9a97bc12",
+      "name": "Post to Twitter/X",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        0,
+        112
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "youTubeOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"snippet\": {\n    \"title\": \"{{$json.topic}}\",\n    \"description\": \"{{$json.captions.youtube}}\\n\\n{{$json.hashtags}}\",\n    \"tags\": {{$json.hashtags.split(' ').slice(0, 10)}},\n    \"categoryId\": \"22\"\n  },\n  \"status\": {\n    \"privacyStatus\": \"public\",\n    \"selfDeclaredMadeForKids\": false\n  }\n}",
+        "options": {}
+      },
+      "id": "e63b38b7-1483-458e-afde-794deb22e993",
+      "name": "Post to YouTube",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        0,
+        208
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://open.tiktokapis.com/v2/post/publish/video/init/",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "tiktokApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"post_info\": {\n    \"title\": \"{{$json.captions.tiktok}}\",\n    \"privacy_level\": \"PUBLIC_TO_EVERYONE\",\n    \"disable_duet\": false,\n    \"disable_comment\": false,\n    \"disable_stitch\": false,\n    \"video_cover_timestamp_ms\": 1000\n  },\n  \"source_info\": {\n    \"source\": \"FILE_URL\",\n    \"video_url\": \"{{$json.mediaUrl}}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "756a4d14-8c99-4ab1-b78e-402bc90f9623",
+      "name": "Post to TikTok",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        0,
+        304
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linkedin.com/v2/ugcPosts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "linkedInOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"author\": \"urn:li:person:{{$env.LINKEDIN_PERSON_ID}}\",\n  \"lifecycleState\": \"PUBLISHED\",\n  \"specificContent\": {\n    \"com.linkedin.ugc.ShareContent\": {\n      \"shareCommentary\": {\n        \"text\": \"{{$json.captions.linkedin}}\\n\\n{{$json.hashtags.split(' ').slice(0, 3).join(' ')}}\"\n      },\n      \"shareMediaCategory\": \"IMAGE\",\n      \"media\": [\n        {\n          \"status\": \"READY\",\n          \"media\": \"{{$json.mediaUrl}}\"\n        }\n      ]\n    }\n  },\n  \"visibility\": {\n    \"com.linkedin.ugc.MemberNetworkVisibility\": \"PUBLIC\"\n  }\n}",
+        "options": {}
+      },
+      "id": "5419ef89-2ec2-40ca-af80-f1005364c133",
+      "name": "Post to LinkedIn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        0,
+        400
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "acdc7dc6-3df6-47e5-a5f3-e57f110bf357",
+      "name": "Merge Platform Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        400,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = {\n  instagram: items[0].json,\n  twitter: items[1].json,\n  youtube: items[2].json,\n  tiktok: items[3].json,\n  linkedin: items[4].json\n};\n\nconst logEntry = {\n  timestamp: new Date().toISOString(),\n  topic: items[0].json.topic,\n  platforms: {},\n  errors: []\n};\n\nfor (const [platform, result] of Object.entries(results)) {\n  if (result.error) {\n    logEntry.platforms[platform] = 'FAILED';\n    logEntry.errors.push({\n      platform: platform,\n      error: result.error.message || 'Unknown error'\n    });\n  } else {\n    logEntry.platforms[platform] = 'SUCCESS';\n  }\n}\n\nreturn { json: logEntry };"
+      },
+      "id": "b0ab8404-77af-49f7-a171-3431938e2e1a",
+      "name": "Log Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      },
+      "id": "35645283-facf-4bff-a51c-eda39b6fc5e8",
+      "name": "Save to Logs Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [
+        800,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.errors.length}}",
+              "operation": "largerThan",
+              "value2": "0"
+            }
+          ]
+        }
+      },
+      "id": "823d8f98-8a4b-4693-8555-aa8795c480b1",
+      "name": "Check for Errors",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        608,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "text": "=⚠️ Social Media Post Error Alert\n\nTopic: {{$json.topic}}\nTimestamp: {{$json.timestamp}}\n\nFailed Platforms:\n{{$json.errors.map(e => `• ${e.platform}: ${e.error}`).join('\\n')}}",
+        "otherOptions": {}
+      },
+      "id": "88ef525c-13d3-40bc-bb20-84877a9f7487",
+      "name": "Send Slack Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        800,
+        352
+      ],
+      "webhookId": "70ab8695-a223-4500-8d68-0c9cb632a9a2"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "40de4c4d-eb92-4680-a2ba-5e125c97177b",
+      "name": "Weekly Report Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://graph.facebook.com/v18.0/{{$env.INSTAGRAM_ACCOUNT_ID}}/insights?metric=impressions,reach,profile_views,follower_count&period=week",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "instagramBusinessAccountApi",
+        "options": {}
+      },
+      "id": "9467231b-8b4d-4c17-9f0f-6412c73137aa",
+      "name": "Get Instagram Analytics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -1008,
+        512
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://api.twitter.com/2/users/{{$env.TWITTER_USER_ID}}/tweets?tweet.fields=public_metrics&max_results=100",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twitterOAuth2Api",
+        "options": {}
+      },
+      "id": "c6422e2a-8fc8-478c-8256-180c21a33f4f",
+      "name": "Get Twitter Analytics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -1008,
+        608
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/youtube/v3/channels?part=statistics&id={{$env.YOUTUBE_CHANNEL_ID}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "youTubeOAuth2Api",
+        "options": {}
+      },
+      "id": "93bdd174-c3a9-4b96-97d7-9271e969ba75",
+      "name": "Get YouTube Analytics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -1008,
+        704
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "6ffa9789-d435-4997-95d9-5f7fae156eb6",
+      "name": "Merge All Analytics",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        -800,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const instagram = items[0].json.data || [];\nconst twitter = items[1].json.data || [];\nconst youtube = items[2].json.items?.[0]?.statistics || {};\n\nconst report = {\n  week: new Date().toISOString().split('T')[0],\n  instagram: {\n    impressions: instagram.find(m => m.name === 'impressions')?.values[0]?.value || 0,\n    reach: instagram.find(m => m.name === 'reach')?.values[0]?.value || 0,\n    profile_views: instagram.find(m => m.name === 'profile_views')?.values[0]?.value || 0,\n    followers: instagram.find(m => m.name === 'follower_count')?.values[0]?.value || 0\n  },\n  twitter: {\n    total_tweets: twitter.length,\n    total_likes: twitter.reduce((sum, t) => sum + (t.public_metrics?.like_count || 0), 0),\n    total_retweets: twitter.reduce((sum, t) => sum + (t.public_metrics?.retweet_count || 0), 0),\n    total_replies: twitter.reduce((sum, t) => sum + (t.public_metrics?.reply_count || 0), 0)\n  },\n  youtube: {\n    subscribers: youtube.subscriberCount || 0,\n    total_views: youtube.viewCount || 0,\n    total_videos: youtube.videoCount || 0\n  },\n  summary: ''\n};\n\nreport.summary = `Weekly Social Media Report\\n\\n` +\n  `Instagram:\\n- Impressions: ${report.instagram.impressions}\\n- Reach: ${report.instagram.reach}\\n- Profile Views: ${report.instagram.profile_views}\\n- Followers: ${report.instagram.followers}\\n\\n` +\n  `Twitter/X:\\n- Tweets Posted: ${report.twitter.total_tweets}\\n- Total Likes: ${report.twitter.total_likes}\\n- Total Retweets: ${report.twitter.total_retweets}\\n\\n` +\n  `YouTube:\\n- Subscribers: ${report.youtube.subscribers}\\n- Total Views: ${report.youtube.total_views}\\n- Videos: ${report.youtube.total_videos}`;\n\nreturn { json: report };"
+      },
+      "id": "001b6570-7e94-4b27-9c93-d1d630c0327d",
+      "name": "Compile Weekly Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -608,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      },
+      "id": "55141bea-6221-4397-881e-23a732d250bf",
+      "name": "Save Analytics to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [
+        -400,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "reports@yourdomain.com",
+        "toEmail": "team@yourdomain.com",
+        "subject": "=Weekly Social Media Performance Report - {{$json.week}}",
+        "options": {}
+      },
+      "id": "c8fb0268-f7e0-403c-9d16-50b7ef20f9e7",
+      "name": "Send Email Report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -400,
+        704
+      ],
+      "webhookId": "3159cc26-0337-4d08-9d29-4f7b9a4dadf9"
+    },
+    {
+      "parameters": {
+        "text": "={{$json.summary}}",
+        "otherOptions": {}
+      },
+      "id": "f27f7d98-0645-4a9a-b292-499db3c78d91",
+      "name": "Send Slack Report",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        -400,
+        800
+      ],
+      "webhookId": "75ce6db3-5156-4437-aa9a-5bb16bc97715"
+    }
+  ],
+  "pinData": {},
+  "connections": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "880d387e-4ec3-4844-b1a2-49d102014eb2",
+  "meta": {
+    "instanceId": "f21b6cb0e4e7627e806ed40852c3e82c0eab25fb371c10dfbaba83cf3b2aaae4"
+  },
+  "id": "bXkHUEiL16bbAR9vmSesj",
+  "tags": []
+}
